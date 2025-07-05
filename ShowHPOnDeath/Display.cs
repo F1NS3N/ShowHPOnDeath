@@ -32,7 +32,7 @@ namespace ShowHPOnDeath
             CanvasGroup canvasGroup = _canvas.GetComponent<CanvasGroup>();
             canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
-
+            
             UnityEngine.Object.DontDestroyOnLoad(_canvas);
 
             _text = CanvasUtil.CreateTextPanel(

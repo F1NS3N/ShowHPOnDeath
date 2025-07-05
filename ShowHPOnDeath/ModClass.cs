@@ -19,7 +19,7 @@ namespace ShowHPOnDeath
         public GlobalSettings OnSaveGlobal() => GS;
 
         public ShowHPOnDeath() : base("ShowHPOnDeath") { }
-        public override string GetVersion() => "1.0.0";
+        public override string GetVersion() => "1.1.0";
 
         private static List<(string Name, int HP)> CurrentBosses = new List<(string, int)>();
 
