@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using HutongGames.PlayMaker;
 using Modding;
-using UnityEngine;
+
 
 namespace ShowHPOnDeath
 {
@@ -14,7 +13,7 @@ namespace ShowHPOnDeath
 
     public class ShowHPOnDeath : Mod, IGlobalSettings<GlobalSettings>
     {
-        public string LastBossName = "";
+        // ==== Подготовкаа ====
         public static GlobalSettings GS { get; private set; } = new();
         public void OnLoadGlobal(GlobalSettings s) => GS = s;
         public GlobalSettings OnSaveGlobal() => GS;
@@ -22,54 +21,67 @@ namespace ShowHPOnDeath
         public ShowHPOnDeath() : base("ShowHPOnDeath") { }
         public override string GetVersion() => "1.0.0";
 
-        private static HealthManager _currentBoss = null;
+        private static List<(string Name, int HP)> CurrentBosses = new List<(string, int)>();
 
         public override void Initialize()
         {
             On.HealthManager.OnEnable += OnHealthManagerEnable;
             ModHooks.BeforeSceneLoadHook += BeforeSceneLoad;
-            CreateUI(); // Создаем UI для отображения
+            CreateUI();
         }
-
+        // ==== Логика добавления босса после того как сдох ====
         private string BeforeSceneLoad(string newSceneName)
         {
+            CurrentBosses.Clear();
 
-            UpdateBossRemnantHP();
-
-            // Показываем HP босса, если он был
-            if (GS.Remnant > 0 && !string.IsNullOrEmpty(LastBossName))
+            foreach (var boss in UnityEngine.Object.FindObjectsOfType<HealthManager>())
             {
-                UpdateDisplay($"[{LastBossName}]\nHP: {GS.Remnant}");
+                if (boss != null && boss.gameObject.activeInHierarchy && boss.hp > 0)
+                {
+                    if (BossNames.TryGetValue(boss.gameObject.name, out string displayName))
+                    {
+                        CurrentBosses.Add((displayName, boss.hp));
+                    }
+                }
+            }
+
+            // ==== Логика дислея, например добавление порядкового номера ====
+            string displayText = "";
+            for (int i = 0; i < CurrentBosses.Count; i++)
+            {
+                var (name, hp) = CurrentBosses[i];
+
+                int count = 0;
+                for (int j = 0; j < i; j++)
+                {
+                    if (CurrentBosses[j].Name == name) count++;
+                }
+
+                string finalName = count > 0 ? $"{name} ({count + 1})" : name;
+
+                displayText += $"[{finalName}]\nHP: {hp}\n";
+            }
+
+            if (!string.IsNullOrEmpty(displayText))
+            {
+                UpdateDisplay(displayText.Trim());
             }
 
             return newSceneName;
         }
 
-        private void UpdateBossRemnantHP()
-        {
-            if (_currentBoss != null && _currentBoss.hp > 0)
-            {
-                GS.Remnant = _currentBoss.hp;
-                Log($"[BOSS REMNANT] HP босса сохранён: {GS.Remnant}");
-            }
-            else
-            {
-                GS.Remnant = 0;
-                Log($"[BOSS REMNANT] Нет активного босса или он мёртв");
-            }
-        }
-
+        // ==== Ну тут понятно получение хп ====
         private void OnHealthManagerEnable(On.HealthManager.orig_OnEnable orig, HealthManager self)
         {
             if (BossNames.TryGetValue(self.gameObject.name, out string displayName))
             {
-                Log($"[ShowHPOnDeath] Обнаружен босс: {self.gameObject.name} ({displayName})");
-                _currentBoss = self;
-                LastBossName = displayName;
+                Log($"[ShowHPOnDeath] Обнаружен босс: {self.gameObject.name} → {displayName}");
+
+                CurrentBosses.Add((displayName, self.hp));
             }
+
             orig(self);
         }
-
         // ==== Отображение информации ====
         private void CreateUI()
         {
@@ -92,6 +104,7 @@ namespace ShowHPOnDeath
             }
         }
 
+        // ==== Словарь названий боссов в хоге, слева название самого моба, справа как его зовут в игре думаю это очевидно ====
         public static Dictionary<string, string> BossNames = new Dictionary<string, string>()
         {
             // Hall Of Gods
