@@ -8,10 +8,10 @@ namespace ShowHPOnDeath
     [Serializable]
     public class GlobalSettings
     {
-        public int Remnant = 0;
+        public bool EnabledMod = false;
     }
 
-    public class ShowHPOnDeath : Mod, IGlobalSettings<GlobalSettings>
+    public class ShowHPOnDeath : Mod, IMenuMod, IGlobalSettings<GlobalSettings>
     {
         // ==== Подготовкаа ====
         public static GlobalSettings GS { get; private set; } = new();
@@ -29,9 +29,47 @@ namespace ShowHPOnDeath
             ModHooks.BeforeSceneLoadHook += BeforeSceneLoad;
             CreateUI();
         }
+
+        // ==== Реализация меню (без satchel btw) ====
+
+        bool IMenuMod.ToggleButtonInsideMenu => true;
+
+        public bool ToggleButtonInsideMenu => true;
+
+        List<IMenuMod.MenuEntry> IMenuMod.GetMenuData(IMenuMod.MenuEntry? toggleButtonEntry)
+        {
+            return new List<IMenuMod.MenuEntry>
+            {
+                new IMenuMod.MenuEntry
+                {
+                    Name = "Global Switch",
+                    Description = "Turn mod On/Off",
+                    Values = new string[] {
+                        "Off",
+                        "On",
+                    },
+                    Saver = opt => ChangeGlobalSwitchState(opt == 1),
+                    Loader = () => GS.EnabledMod ? 1 : 0
+                }
+            };
+        }
+
+        private void ChangeGlobalSwitchState(bool state)
+        {
+            GS.EnabledMod = state;
+        }
+
+
         // ==== Логика добавления босса после того как сдох ====
         private string BeforeSceneLoad(string newSceneName)
         {
+            if (!GS.EnabledMod)
+            {
+                CurrentBosses.Clear();
+                UpdateDisplay(""); // Очистить дисплей, если мод выключен
+                return newSceneName;
+            }
+
             CurrentBosses.Clear();
 
             foreach (var boss in UnityEngine.Object.FindObjectsOfType<HealthManager>())
@@ -70,13 +108,16 @@ namespace ShowHPOnDeath
             return newSceneName;
         }
 
+
+
         // ==== Ну тут понятно получение хп ====
         private void OnHealthManagerEnable(On.HealthManager.orig_OnEnable orig, HealthManager self)
         {
+            if (!GS.EnabledMod) return;
+
             if (BossNames.TryGetValue(self.gameObject.name, out string displayName))
             {
                 Log($"[ShowHPOnDeath] Обнаружен босс: {self.gameObject.name} → {displayName}");
-
                 CurrentBosses.Add((displayName, self.hp));
             }
 
