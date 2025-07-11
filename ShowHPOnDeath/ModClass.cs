@@ -103,6 +103,7 @@ namespace ShowHPOnDeath
             {
                 CurrentBosses.Clear();
                 UpdateDisplay("");
+                InitialHPs.Clear();
                 return newSceneName;
             }
 
@@ -115,6 +116,7 @@ namespace ShowHPOnDeath
                     if (BossNames.TryGetValue(boss.gameObject.name, out string displayName))
                     {
                         // Сохраняем начальное HP при первом появлении через OnHealthManagerEnable
+                        InitialHPs[displayName] = boss.hp;
                         CurrentBosses.Add((displayName, boss.hp));
                     }
                 }
