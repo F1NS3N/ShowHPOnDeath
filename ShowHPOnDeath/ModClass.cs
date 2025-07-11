@@ -22,7 +22,9 @@ namespace ShowHPOnDeath
         public ShowHPOnDeath() : base("ShowHPOnDeath") { }
         public override string GetVersion() => "1.1.3";
 
-        private static List<(string Name, int InitialHP, int CurrentHP)> BossHPData = new();
+        private static List<(string Name, int HP)> CurrentBosses = new List<(string, int)>();
+        private static string LastDisplayText = "";
+        private static Dictionary<string, int> InitialHPs = new();
 
         public override void Initialize()
         {
@@ -64,44 +66,57 @@ namespace ShowHPOnDeath
         // ==== Логика добавления босса после того как сдох ====
         private string BeforeSceneLoad(string newSceneName)
         {
-            if (!GS.EnabledMod) return newSceneName;
+            if (!GS.EnabledMod)
+            {
+                CurrentBosses.Clear();
+                UpdateDisplay("");
+                return newSceneName;
+            }
+
+            CurrentBosses.Clear(); // <-- ВАЖНО: очистка перед сканированием
 
             foreach (var boss in UnityEngine.Object.FindObjectsOfType<HealthManager>())
             {
-                if (boss != null && ShowHPOnDeath.BossNames.ContainsKey(boss.gameObject.name))
+                if (boss != null && boss.gameObject.activeInHierarchy && boss.hp > 0)
                 {
-                    string displayName = ShowHPOnDeath.BossNames[boss.gameObject.name];
-                    var existing = BossHPData.Find(b => b.Name == displayName);
-
-                    if (existing.Name != null)
+                    if (BossNames.TryGetValue(boss.gameObject.name, out string displayName))
                     {
-                        // Обновляем только текущее HP
-                        int index = BossHPData.IndexOf(existing);
-                        BossHPData[index] = (existing.Name, existing.InitialHP, boss.hp);
+                        // Сохраняем начальное HP при первом появлении через OnHealthManagerEnable
+                        CurrentBosses.Add((displayName, boss.hp));
                     }
                 }
             }
-            BossHPData.RemoveAll(b =>
-            {
-                // Ищем оригинальное имя босса в словаре
-                string originalName = BossNames.FirstOrDefault(x => x.Value == b.Name).Key;
-                if (string.IsNullOrEmpty(originalName)) return true;
 
-                // Проверяем, существует ли такой босс на сцене
-                HealthManager hm = UnityEngine.Object.FindObjectOfType<HealthManager>();
-                return b.CurrentHP <= 0 || hm == null || hm.gameObject.name != originalName;
-            });
-
-            // ==== Формируем текст для отображения ====
+            // ==== Логика отображения ====
             string displayText = "";
-            foreach (var (name, initialHP, currentHP) in BossHPData)
+            for (int i = 0; i < CurrentBosses.Count; i++)
             {
-                float percent = initialHP > 0 ? ((float)currentHP / initialHP) * 100 : 0f;
+                var (name, currentHP) = CurrentBosses[i];
 
-                displayText += $"[{name}]\nHP: {currentHP} / {initialHP}\n";
+                int count = 0;
+                for (int j = 0; j < i; j++)
+                {
+                    if (CurrentBosses[j].Name == name) count++;
+                }
+
+                string finalName = count > 0 ? $"{name} ({count + 1})" : name;
+
+                if (InitialHPs.TryGetValue(name, out int initialHP))
+                {
+                    displayText += $"[{finalName}]\nHP: {currentHP} / {initialHP}\n";
+                }
+                else
+                {
+                    displayText += $"[{finalName}]\nHP: {currentHP}\n";
+                }
             }
 
-            UpdateDisplay(displayText.Trim());
+            LastDisplayText = displayText.Trim();
+
+            if (!string.IsNullOrEmpty(displayText))
+            {
+                UpdateDisplay(displayText);
+            }
 
             return newSceneName;
         }
@@ -113,14 +128,19 @@ namespace ShowHPOnDeath
         {
             if (!GS.EnabledMod) return;
 
-            // Проверяем, есть ли такой босс в твоём словаре
-            if (ShowHPOnDeath.BossNames.TryGetValue(self.gameObject.name, out string displayName))
+            if (BossNames.TryGetValue(self.gameObject.name, out string displayName))
             {
-                // Сохраняем начальное HP, если такого босса ещё нет в списке
-                if (!BossHPData.Any(b => b.Name == displayName))
+                // Сохраняем начальное HP только если это первый раз для этого босса
+                if (!InitialHPs.ContainsKey(displayName))
                 {
-                    BossHPData.Add((displayName, self.hp, self.hp));
-                    Log($"[ShowHPOnDeath] Найден босс: {displayName}, HP: {self.hp}");
+                    InitialHPs[displayName] = self.hp;
+                    Log($"[ShowHPOnDeath] Найден босс: {self.gameObject.name} → {displayName}, HP: {self.hp}");
+                }
+
+                // Добавляем только если такого босса ещё нет
+                if (!CurrentBosses.Any(b => b.Name == displayName))
+                {
+                    CurrentBosses.Add((displayName, self.hp));
                 }
             }
 
