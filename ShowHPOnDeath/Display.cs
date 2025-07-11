@@ -12,7 +12,7 @@ namespace ShowHPOnDeath
         private DateTime DisplayExpireTime = DateTime.Now;
         private TimeSpan DisplayDuration = TimeSpan.FromSeconds(6);
         private Vector2 TextSize = new(800, 500);
-        private Vector2 TextPosition = new(0.22f, 0.243f);
+        private Vector2 TextPosition = new(0.78f, 0.243f);
 
         private GameObject _canvas;
         private UnityEngine.UI.Text _text;
@@ -36,7 +36,7 @@ namespace ShowHPOnDeath
             UnityEngine.Object.DontDestroyOnLoad(_canvas);
 
             _text = CanvasUtil.CreateTextPanel(
-                _canvas, "", 24, TextAnchor.LowerLeft,
+                _canvas, "", 24, TextAnchor.LowerRight,
                 new CanvasUtil.RectData(TextSize, Vector2.zero, TextPosition, TextPosition),
                 CanvasUtil.GetFont("Perpetua")
             ).GetComponent<UnityEngine.UI.Text>();

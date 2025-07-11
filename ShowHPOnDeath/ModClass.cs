@@ -1,15 +1,37 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using InControl;
 using Modding;
+using Modding.Converters;
+using Newtonsoft.Json;
+using UnityEngine;
+using static MonoMod.Cil.RuntimeILReferenceBag.FastDelegateInvokers;
 
 
 namespace ShowHPOnDeath
 {
+    public class KeyBinds : PlayerActionSet
+    {
+        //the keybinds you want to save. it needs to be of type PlayerAction
+        public PlayerAction Hide;
+
+        //a constructor to initalize the PlayerAction
+        public KeyBinds()
+        {
+            Hide = CreatePlayerAction("Hide");
+
+            //optional: set a default bind
+            Hide.AddDefaultBinding(Key.H);
+        }
+    }
+
     [Serializable]
     public class GlobalSettings
     {
         public bool EnabledMod = false;
+        [JsonConverter(typeof(PlayerActionSetConverter))]
+        public KeyBinds keybinds = new KeyBinds();
     }
 
     public class ShowHPOnDeath : Mod, IMenuMod, IGlobalSettings<GlobalSettings>
@@ -20,17 +42,28 @@ namespace ShowHPOnDeath
         public GlobalSettings OnSaveGlobal() => GS;
 
         public ShowHPOnDeath() : base("ShowHPOnDeath") { }
-        public override string GetVersion() => "1.1.3";
+        public override string GetVersion() => "1.2.0";
 
         private static List<(string Name, int HP)> CurrentBosses = new List<(string, int)>();
         private static string LastDisplayText = "";
         private static Dictionary<string, int> InitialHPs = new();
 
+
         public override void Initialize()
         {
             On.HealthManager.OnEnable += OnHealthManagerEnable;
             ModHooks.BeforeSceneLoadHook += BeforeSceneLoad;
+            ModHooks.HeroUpdateHook += OnHeroUpdate;
             CreateUI();
+        }
+
+
+        public void OnHeroUpdate()
+        {
+            if (GS.keybinds.Hide.WasPressed)
+            {
+                UpdateDisplay("");
+            }
         }
 
         // ==== Реализация меню (без satchel btw) ====
@@ -89,6 +122,10 @@ namespace ShowHPOnDeath
 
             // ==== Логика отображения ====
             string displayText = "";
+            if (CurrentBosses.Count > 0)
+            {
+                displayText += $"Press [{GS.keybinds.Hide.UnfilteredBindings[0].Name}] to hide\n⸻⸻⸻\n";
+            }
             for (int i = 0; i < CurrentBosses.Count; i++)
             {
                 var (name, currentHP) = CurrentBosses[i];
