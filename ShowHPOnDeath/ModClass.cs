@@ -81,6 +81,16 @@ namespace ShowHPOnDeath
                     }
                 }
             }
+            BossHPData.RemoveAll(b =>
+            {
+                // Ищем оригинальное имя босса в словаре
+                string originalName = BossNames.FirstOrDefault(x => x.Value == b.Name).Key;
+                if (string.IsNullOrEmpty(originalName)) return true;
+
+                // Проверяем, существует ли такой босс на сцене
+                HealthManager hm = UnityEngine.Object.FindObjectOfType<HealthManager>();
+                return b.CurrentHP <= 0 || hm == null || hm.gameObject.name != originalName;
+            });
 
             // ==== Формируем текст для отображения ====
             string displayText = "";
