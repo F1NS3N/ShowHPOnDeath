@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using InControl;
 using Modding;
 using Modding.Converters;
@@ -106,7 +107,6 @@ namespace ShowHPOnDeath
                 InitialHPs.Clear();
                 return newSceneName;
             }
-
             CurrentBosses.Clear(); // <-- ВАЖНО: очистка перед сканированием
 
             foreach (var boss in UnityEngine.Object.FindObjectsOfType<HealthManager>())
@@ -116,7 +116,6 @@ namespace ShowHPOnDeath
                     if (BossNames.TryGetValue(boss.gameObject.name, out string displayName))
                     {
                         // Сохраняем начальное HP при первом появлении через OnHealthManagerEnable
-                        InitialHPs[displayName] = boss.hp;
                         CurrentBosses.Add((displayName, boss.hp));
                     }
                 }
@@ -156,8 +155,9 @@ namespace ShowHPOnDeath
             {
                 UpdateDisplay(displayText);
             }
-
+            InitialHPs.Clear();
             return newSceneName;
+
         }
 
 
@@ -172,19 +172,29 @@ namespace ShowHPOnDeath
                 // Сохраняем начальное HP только если это первый раз для этого босса
                 if (!InitialHPs.ContainsKey(displayName))
                 {
-                    InitialHPs[displayName] = self.hp;
-                    Log($"[ShowHPOnDeath] Найден босс: {self.gameObject.name} → {displayName}, HP: {self.hp}");
+                    Task.Delay(1000).ContinueWith( _x => {
+                        HealthManager HM = self.gameObject.GetComponent < HealthManager>();
+                        InitialHPs[displayName] = HM.hp;
+                        Log($"[ShowHPOnDeath] Найден босс: {self.gameObject.name} → {displayName}, HP: {self.hp}");
+                    });
+
                 }
 
                 // Добавляем только если такого босса ещё нет
                 if (!CurrentBosses.Any(b => b.Name == displayName))
                 {
-                    CurrentBosses.Add((displayName, self.hp));
+                    Task.Delay(1000).ContinueWith( _x => {
+                        HealthManager HM = self.gameObject.GetComponent < HealthManager>();
+                        CurrentBosses.Add((displayName, HM.hp));
+                    });
+
+
                 }
             }
 
             orig(self);
         }
+
         // ==== Отображение информации ====
         private void CreateUI()
         {
