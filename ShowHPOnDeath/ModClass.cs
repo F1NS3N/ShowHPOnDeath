@@ -30,7 +30,7 @@ namespace ShowHPOnDeath
     [Serializable]
     public class GlobalSettings
     {
-        public bool EnabledMod = false;
+        public bool EnabledMod = true;
         [JsonConverter(typeof(PlayerActionSetConverter))]
         public KeyBinds keybinds = new KeyBinds();
     }
@@ -43,7 +43,7 @@ namespace ShowHPOnDeath
         public GlobalSettings OnSaveGlobal() => GS;
 
         public ShowHPOnDeath() : base("ShowHPOnDeath") { }
-        public override string GetVersion() => "1.2.0";
+        public override string GetVersion() => "1.2.1";
 
         private static List<(string Name, int HP)> CurrentBosses = new List<(string, int)>();
         private static string LastDisplayText = "";
