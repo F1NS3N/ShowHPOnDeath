@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using InControl;
 using Modding;
@@ -31,6 +32,8 @@ namespace ShowHPOnDeath
     public class GlobalSettings
     {
         public bool EnabledMod = true;
+        public bool ShowPB = true;
+        public bool HideAfter10Sec = true;
         [JsonConverter(typeof(PlayerActionSetConverter))]
         public KeyBinds keybinds = new KeyBinds();
     }
@@ -43,12 +46,14 @@ namespace ShowHPOnDeath
         public GlobalSettings OnSaveGlobal() => GS;
 
         public ShowHPOnDeath() : base("ShowHPOnDeath") { }
-        public override string GetVersion() => "1.2.1";
+        public override string GetVersion() => "1.3.0";
 
         private static List<(string Name, int HP)> CurrentBosses = new List<(string, int)>();
         private static string LastDisplayText = "";
         private static Dictionary<string, int> InitialHPs = new();
-
+        private static int PersonalBest = int.MaxValue;
+        private static string LastBossName = "";
+        private static CancellationTokenSource currentDisplayToken = null;
 
         public override void Initialize()
         {
@@ -76,24 +81,46 @@ namespace ShowHPOnDeath
         List<IMenuMod.MenuEntry> IMenuMod.GetMenuData(IMenuMod.MenuEntry? toggleButtonEntry)
         {
             return new List<IMenuMod.MenuEntry>
-            {
-                new IMenuMod.MenuEntry
-                {
-                    Name = "Global Switch",
-                    Description = "Turn mod On/Off",
-                    Values = new string[] {
-                        "Off",
-                        "On",
-                    },
-                    Saver = opt => ChangeGlobalSwitchState(opt == 1),
-                    Loader = () => GS.EnabledMod ? 1 : 0
-                }
-            };
+    {
+        new IMenuMod.MenuEntry
+        {
+            Name = "Global Switch",
+            Description = "Turn mod On/Off",
+            Values = new[] { "Off", "On" },
+            Saver = opt => ChangeEnabled(opt == 1),
+            Loader = () => GS.EnabledMod ? 1 : 0
+        },
+        new IMenuMod.MenuEntry
+        {
+            Name = "Show PB",
+            Description = "Show or hide Personal Best",
+            Values = new[] { "Off", "On" },
+            Saver = opt => ChangeShowPB(opt == 1),
+            Loader = () => GS.ShowPB ? 1 : 0
+        },
+        new IMenuMod.MenuEntry
+        {
+            Name = "Hide after 10sec",
+            Description = "Hides the display after a few seconds",
+            Values = new[] { "Off", "On" },
+            Saver = opt => ChangeHide(opt == 1),
+            Loader = () => GS.HideAfter10Sec ? 1 : 0
+        }
+    };
         }
 
-        private void ChangeGlobalSwitchState(bool state)
+        private void ChangeEnabled(bool state)
         {
             GS.EnabledMod = state;
+        }
+
+        private void ChangeShowPB(bool state)
+        {
+            GS.ShowPB = state;
+        }
+        private void ChangeHide(bool state)
+        {
+            GS.HideAfter10Sec = state;
         }
 
 
@@ -107,7 +134,14 @@ namespace ShowHPOnDeath
                 InitialHPs.Clear();
                 return newSceneName;
             }
-            CurrentBosses.Clear(); // <-- ВАЖНО: очистка перед сканированием
+
+            // Отменяем предыдущий таймер
+            currentDisplayToken?.Cancel();
+            currentDisplayToken?.Dispose();
+            currentDisplayToken = new CancellationTokenSource();
+
+            CurrentBosses.Clear();
+            bool foundAnyBoss = false;
 
             foreach (var boss in UnityEngine.Object.FindObjectsOfType<HealthManager>())
             {
@@ -115,33 +149,47 @@ namespace ShowHPOnDeath
                 {
                     if (BossNames.TryGetValue(boss.gameObject.name, out string displayName))
                     {
-                        // Сохраняем начальное HP при первом появлении через OnHealthManagerEnable
                         CurrentBosses.Add((displayName, boss.hp));
+                        foundAnyBoss = true;
+
+                        // === ЛОГИКА PB ===
+                        if (displayName == LastBossName)
+                        {
+                            if (boss.hp < PersonalBest)
+                            {
+                                PersonalBest = boss.hp;
+                            }
+                        }
+                        else
+                        {
+                            PersonalBest = boss.hp;
+                            LastBossName = displayName;
+                        }
                     }
                 }
             }
 
-            // ==== Логика отображения ====
+            // Формируем текст
             string displayText = "";
-            if (CurrentBosses.Count > 0)
+            if (foundAnyBoss)
             {
                 displayText += $"Press [{GS.keybinds.Hide.UnfilteredBindings[0].Name}] to hide\n⸻⸻⸻\n";
             }
+
             for (int i = 0; i < CurrentBosses.Count; i++)
             {
                 var (name, currentHP) = CurrentBosses[i];
-
-                int count = 0;
-                for (int j = 0; j < i; j++)
-                {
-                    if (CurrentBosses[j].Name == name) count++;
-                }
-
+                int count = CurrentBosses.Take(i).Count(b => b.Name == name);
                 string finalName = count > 0 ? $"{name} ({count + 1})" : name;
 
                 if (InitialHPs.TryGetValue(name, out int initialHP))
                 {
+                    string pbText = PersonalBest == int.MaxValue ? "-" : PersonalBest.ToString();
                     displayText += $"[{finalName}]\nHP: {currentHP} / {initialHP}\n";
+                    if (GS.ShowPB)
+                    {
+                        displayText += $"PB: {pbText}\n";
+                    }
                 }
                 else
                 {
@@ -150,15 +198,22 @@ namespace ShowHPOnDeath
             }
 
             LastDisplayText = displayText.Trim();
+            UpdateDisplay(displayText);
 
-            if (!string.IsNullOrEmpty(displayText))
+            // Запускаем новый таймер с отменой
+            if (GS.HideAfter10Sec)
             {
-                UpdateDisplay(displayText);
+                Task.Delay(10000, currentDisplayToken.Token)
+                    .ContinueWith(_ =>
+                    {
+                        if (!_.IsCanceled)
+                            UpdateDisplay("");
+                    }, TaskScheduler.Default);
             }
-            InitialHPs.Clear();
-            return newSceneName;
 
+            return newSceneName;
         }
+
 
 
 
@@ -166,32 +221,32 @@ namespace ShowHPOnDeath
         private void OnHealthManagerEnable(On.HealthManager.orig_OnEnable orig, HealthManager self)
         {
             if (!GS.EnabledMod) return;
-
             if (BossNames.TryGetValue(self.gameObject.name, out string displayName))
             {
-                // Сохраняем начальное HP только если это первый раз для этого босса
                 if (!InitialHPs.ContainsKey(displayName))
                 {
-                    Task.Delay(1000).ContinueWith( _x => {
-                        HealthManager HM = self.gameObject.GetComponent < HealthManager>();
-                        InitialHPs[displayName] = HM.hp;
-                        Log($"[ShowHPOnDeath] Найден босс: {self.gameObject.name} → {displayName}, HP: {self.hp}");
+                    Task.Delay(1000).ContinueWith(_x =>
+                    {
+                        HealthManager HM = self.gameObject.GetComponent<HealthManager>();
+                        if (HM != null)
+                        {
+                            InitialHPs[displayName] = HM.hp;
+                        }
                     });
-
                 }
 
-                // Добавляем только если такого босса ещё нет
                 if (!CurrentBosses.Any(b => b.Name == displayName))
                 {
-                    Task.Delay(1000).ContinueWith( _x => {
-                        HealthManager HM = self.gameObject.GetComponent < HealthManager>();
-                        CurrentBosses.Add((displayName, HM.hp));
+                    Task.Delay(1000).ContinueWith(_x =>
+                    {
+                        HealthManager HM = self.gameObject.GetComponent<HealthManager>();
+                        if (HM != null)
+                        {
+                            CurrentBosses.Add((displayName, HM.hp));
+                        }
                     });
-
-
                 }
             }
-
             orig(self);
         }
 
