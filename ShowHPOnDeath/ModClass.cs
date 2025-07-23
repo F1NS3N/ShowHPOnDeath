@@ -100,8 +100,8 @@ namespace ShowHPOnDeath
         },
         new IMenuMod.MenuEntry
         {
-            Name = "Hide after 10sec",
-            Description = "Hides the display after a few seconds",
+            Name = "Auto-Hide",
+            Description = "Hides the display after a 10 seconds",
             Values = new[] { "Off", "On" },
             Saver = opt => ChangeHide(opt == 1),
             Loader = () => GS.HideAfter10Sec ? 1 : 0
